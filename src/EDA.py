@@ -7,29 +7,6 @@ def label_analysis(df,target):
     rate['rate'] = 100.0*rate[target].apply(lambda x: x/df.shape[0])
     return rate
 
-def fea_kde_plot(train,test,fea_cols,target,target_list):
-    import gc
-    #kde,如果变量很多，那么先模型筛再kde，如果变量不多，那么先kde，再模型筛
-    def plot_kde(train, test, col,target='label',target_list=None,values=True):
-        fig,ax =plt.subplots(1,4,figsize=(15,5))
-        if target_list is not None:
-            colors = ['g','r','y','b']
-        for i,ele in enumerate(target_list):
-            sns.kdeplot(train[col][train[target]==ele],color=colors[i],ax=ax[0],label='label_'+str(ele))
-
-        sns.kdeplot(train[col],color='y',ax=ax[1],label='train')
-
-        sns.kdeplot(test[col],color='b',ax=ax[2],label='test')
-
-        sns.kdeplot(train[col],color='y',ax=ax[3],label='train')
-        sns.kdeplot(test[col],color='b',ax=ax[3],label='test')
-        plt.xlabel(col,size=16)
-        plt.show()
-        del train,col,test
-        gc.collect()
-    for col in fea_cols:
-        plot_kde(train, test, col,target=target,target_list=target_list,values=True)
-    
 def get_index_null(df,threshold=0.8,axis=1):
     if axis==1:
         col_null = df.isnull().sum(axis=0)
@@ -53,3 +30,50 @@ def null_fea_analysis(df,target,key,threshold=0.8):
         print(tmp)
         print('**************************************************')
     return results
+
+def fea_kde_plot(train,test,fea_cols,target,target_list,figsize=(15,5)):
+    import gc
+    #kde,如果变量很多，那么先模型筛再kde，如果变量不多，那么先kde，再模型筛
+    def plot_kde(train, test, col,target='label',target_list=None,values=True):
+        fig,ax =plt.subplots(1,4,figsize=figsize)
+        if target_list is not None:
+            colors = ['g','r','y','b']
+        for i,ele in enumerate(target_list):
+            sns.kdeplot(train[col][train[target]==ele],color=colors[i],ax=ax[0],label='label_'+str(ele))
+
+        sns.kdeplot(train[col],color='y',ax=ax[1],label='train')
+
+        sns.kdeplot(test[col],color='b',ax=ax[2],label='test')
+
+        sns.kdeplot(train[col],color='y',ax=ax[3],label='train')
+        sns.kdeplot(test[col],color='b',ax=ax[3],label='test')
+        plt.xlabel(col,size=16)
+        plt.show()
+        del train,col,test
+        gc.collect()
+    for col in fea_cols:
+        plot_kde(train, test, col,target=target,target_list=target_list,values=True)
+        
+def bar_plot(df,col,figsize=(1, 2)):
+    
+        
+#单维直方图，附加kde
+def fea_dist_plot(df,col,figsize=(1, 2)):
+    sns.set_style("white")
+    sns.set_color_codes(palette='deep')
+    f, ax = plt.subplots(figsize=figsize)
+    #Check the new distribution 
+    sns.distplot(df[col], color="b");
+    ax.xaxis.grid(False)
+    ax.set(ylabel="Frequency")
+    ax.set(xlabel=col)
+    ax.set(title=col+" distribution")
+    sns.despine(trim=True, left=True)
+    plt.show()
+    
+#盒图
+def box_plot(df,x,y,hue=None,figsize=(16,5),rotation=45):
+    f, ax = plt.subplots(figsize=figsize)
+    fig = sns.boxplot(x=x, y=y,hue=hue,data=df)
+#     fig.axis(ymin=0, ymax=800000);
+    plt.xticks(rotation=rotation);

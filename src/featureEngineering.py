@@ -1,6 +1,7 @@
 print("you have imported featureEngineering")
 
 from .publicLibrary import *
+import multiprocessing
 
 #变量相关性分析
 def fea_corr_analysis(df,target,exclusion_cols,corr_threshold):
@@ -252,6 +253,22 @@ def get_bestsplit_list(self,sample_set, var,target):
     return split_list
 
 
+#分组后，根据时间排序后，计算差值；可以计算速度等；
+def get_diff(df,key,time='time'):
+    import gc
+    data = pd.DataFrame()
+    for i,ele in enumerate(df.groupby([key])):
+        key,value = ele
+        value = value.sort_values([time])
+        value1 = value.shift(axis=0)
+        diff = value-value1
+        value = pd.concat([value,diff],axis=1)
+        data = pd.concat([data,value])
+    #     print(value)
+        del value,value1,diff
+        gc.collect()
+    return data
+
 #cos/sin 将数值的首位衔接起来，比如说 23 点与 0 点很近，星期一和星期天很近,应用于周期
 def link_head_tail(df, col, n):
     '''
@@ -294,7 +311,7 @@ class TimeFeatures:
         df[starttime+'_day'] = df[starttime].dt.day
         df[starttime+'_dayofweek'] = df[starttime].dt.dayofweek
         df[starttime+'_weekofyear'] = df[starttime].dt.week
-        df[starttime+'_weekend'] = df[starttime+'_weekofyear'].apply(lambda x: 1 if x>=5 else 0)
+        df[starttime+'_weekend'] = df[starttime+'_dayofweek'].apply(lambda x: 1 if x>=5 else 0)
         df[starttime+'_hour'] = df[starttime].dt.hour
 
         # pandas.Series.dt 下有很多属性，可以去看一下是否有需要的。
@@ -308,7 +325,8 @@ class TimeFeatures:
         # 是否时一天的高峰时段 8~10
         df[starttime+'_is_day_high'] = df[starttime+'_hour'].apply(lambda x: 1 if hour_interval[0] <= x <= hour_interval[1]  else 0)
         # 对小时进行分箱
-        df[starttime+'_hour_box'] = pd.cut(df[starttime+'_hour'],bins=hour_bins,right=False,labels=['0-6h','6-12h','12-18h','18-24h'])
+        df[starttime+'_hour_box'] = pd.cut(df[starttime+'_hour'],bins=hour_bins,right=False)
+        df[starttime+'_hour_box'] = df[starttime+'_hour_box'].astype(str).apply(lambda x: re.sub(r'[\[,)]+', "", x).replace(' ','_'))
         
         #上旬
         df['first_ten_days'] = df[starttime+'_day'].apply(lambda x : 1 if x<=10 else 0)
@@ -330,58 +348,148 @@ class TimeFeatures:
 
 class AggregateCharacteristics:
     """
-    dayslist = ['all','7','30']
-    aggregateCharacteristics = AggregateCharacteristics(sample_min,dayslist)
-    aggregateCharacteristics.Aggregate_all_days(df=results,key='bg_user_gid',continuouscols=['accelerate_x'],discretecols=
-    ['os_type'],continuous_crosscols=[['first_ten_days','create_time_weekend'],['mid_ten_days','create_time_weekend']],discrete_crosscols=
-    [['first_ten_days','create_time_weekend'],['mid_ten_days','create_time_weekend']])
+    example:
+    ------------------------
+   dayslist = ['all','1','7','30']
+   aggregateCharacteristics = AggregateCharacteristics(sample,dayslist
+                                          ,continuouscols=['age']
+                                          ,discretecols=['marital_status','ktp_gender','city','last_education']
+                                          ,combinecols = ['create_time_weekend']
+                                          ,continuous_crosscols=[]
+                                          ,discrete_crosscols=[['first_ten_days','create_time_weekend'],  
+                                                        ['create_time_weekend','create_time_hour_box']]
+                                                   )
+    aggregateCharacteristics.Aggregate_all_days(df=results,key='customer_id',timediffcol='trans_time_create_time_days')
+    aggregateCharacteristics.firsttimeDerived(results,key='customer_id',timecol='create_time',timediffcol='trans_time_create_time_days')
+    aggregateCharacteristics.lasttimeDerived(results,key='customer_id',timecol='create_time',timediffcol='trans_time_create_time_days')
+    aggregateCharacteristics.trendDerived(cutline=2)
+    tmp = aggregateCharacteristics.consistencyCheck(results,'customer_id','gender','ktp_gender')
     """
-    def __init__(self,sample,dayslist):
+    
+    def __init__(self,sample,dayslist,continuouscols=[],discretecols=[],combinecols=[],continuous_crosscols=[],discrete_crosscols=[],processes=10):
         self.sample = sample.copy()
         self.dayslist = dayslist
+        #需要衍生的连续变量
+        self.continuouscols = continuouscols
+        #需要衍生的离散变量
+        self.discretecols = discretecols
+        #一维交叉衍生变量
+        self.combinecols = combinecols
+        #二维交叉衍生变量(笛卡尔乘积)_连续变量聚合
+        self.continuous_crosscols = continuous_crosscols
+        #二维交叉衍生变量(笛卡尔乘积)_离散变量聚合
+        self.discrete_crosscols = discrete_crosscols
         
-    def Aggregate_all_days(self,df,key,continuouscols=[],discretecols=[],continuous_crosscols=[],discrete_crosscols=[]):
+        #多进程
+        self.processes = processes
+        
+    #最近xx天内
+    def Aggregate_all_days(self,df,key,timediffcol=''):
         for ndays in self.dayslist:
-            self.Aggregate_days(df,key,continuouscols,discretecols,continuous_crosscols,discrete_crosscols,ndays)
+            self.Aggregate_days(df,key,timediffcol,ndays)
         
-    def Aggregate_days(self,df,key,continuouscols=[],discretecols=[],continuous_crosscols=[],discrete_crosscols=[],ndays='all'):
+    def Aggregate_days(self,df,key,timediffcol='',ndays='all',smaller=True):
         #ndays is None:所有历史数据参与计算变量
         if ndays=='all':
-            df_tmp = df
+            self.df_tmp = df
             renamedays = ''
         else:
-            df_tmp = df[df.trans_time_create_time_days<=int(ndays)]
+            self.df_tmp = df[df[timediffcol]<=int(ndays)]
             renamedays = '_last'+ndays+'days'
         
-        for col in continuouscols:
-            continuousfea = self.continuousAggregate(df_tmp,key,col,renamedays)
-            self.sample = pd.merge(self.sample,continuousfea,how='left',on=key)
-        for col in discretecols:
-            discretefea = self.discreteAggregate(df_tmp,key,col,renamedays)
-            self.sample = pd.merge(self.sample,discretefea,how='left',on=key)
-        
-        #笛卡尔乘积交叉特征
-        for discretecol in discretecols:
-            for crosscol in discrete_crosscols:
-                self.cartesianProduct_discrete(df,key,crosscol,discretecol,renamedays)
-        for continuouscol in continuouscols:
-            for crosscol in continuous_crosscols:
-                pass
-        
+        #连续型变量聚合
+        pool = multiprocessing.Pool(processes=self.processes)
+        executeResults={}
+        for col in self.continuouscols:
+            executeResults[col]=pool.apply_async(func=self.continuousAggregate,args=(self.df_tmp,key,col,renamedays))
+        pool.close()
+        pool.join()
+        for k,value in executeResults.items():
+            fea=value.get()
+            self.sample = pd.merge(self.sample,fea,how='left',on=key)
+        #离散型变量聚合
+        pool = multiprocessing.Pool(processes=self.processes)
+        executeResults={}
+        for col in self.discretecols:
+            executeResults[col]=pool.apply_async(func=self.discreteAggregate,args=(self.df_tmp,key,col,renamedays))
+        pool.close()
+        pool.join()
+        for k,value in executeResults.items():
+            fea=value.get()
+            self.sample = pd.merge(self.sample,fea,how='left',on=key)
             
+        #一维交叉特征
+        pool = multiprocessing.Pool(processes=self.processes)
+        executeResults={}
+        for discretecol in self.discretecols:
+            for combinecol in self.combinecols:
+                k = discretecol+combinecol
+                executeResults[k]=pool.apply_async(func=self.combine1d_discrete,args=(self.df_tmp,key,combinecol,discretecol,renamedays))
+        pool.close()
+        pool.join()
+        for k,value in executeResults.items():
+            results=value.get()
+            for fea in results:
+                self.sample = pd.merge(self.sample,fea,how='left',on=key)
+        
+        #笛卡尔乘积交叉特征--离散
+        pool = multiprocessing.Pool(processes=self.processes)
+        executeResults={}
+        for discretecol in self.discretecols:
+            for crosscol in self.discrete_crosscols:
+                k = discretecol+crosscol[0]+crosscol[1]
+                executeResults[k]=pool.apply_async(func=self.cartesianProduct_discrete,args=(self.df_tmp,key,crosscol,discretecol,renamedays))
+        pool.close()
+        pool.join()
+        for k,value in executeResults.items():
+            results=value.get()
+            for fea in results:
+                self.sample = pd.merge(self.sample,fea,how='left',on=key)
+        #笛卡尔乘积交叉特征--连续
+        for continuouscol in self.continuouscols:
+            for crosscol in self.continuous_crosscols:
+                pass
+    
+    #1d衍生-离散
+    def combine1d_discrete(self,df,key,combinecol,col,renamedays):
+        agg_cols = ['size','count',pd.Series.nunique]
+        values = df[combinecol].unique()
+        results = []
+        for ele in values:
+            tmp_df = df[df[combinecol]==ele]
+            fea = tmp_df.groupby(key)[col].agg(agg_cols).reset_index()
+            fea.rename(columns={'size':combinecol+'_'+str(ele)+'_'+col+'_size'+renamedays,\
+                                'count':combinecol+'_'+str(ele)+'_'+col+'_count'+renamedays,\
+                                'nunique':combinecol+'_'+str(ele)+'_'+col+'_nunique'+renamedays},inplace=True)
+            results.append(fea)
+        return results
+#             self.sample = pd.merge(self.sample,fea,how='left',on=key)
+    
+    #1d衍生-连续
+    def combine1d_continuous(self,df,key,combinecol,col,renamedays):
+        pass
+    
+    #2d衍生-连续
+    def cartesianProduct_continuous(self,df,key,crosscol,col,renamedays):
+        pass
+    
+    #2d衍生-离散
     def cartesianProduct_discrete(self,df,key,crosscol,col,renamedays):
         left_col,right_col = crosscol[0],crosscol[1]
         left_values = df[left_col].unique()
         right_values = df[right_col].unique()
         crossval = [(left, right) for left in left_values for right in right_values]
         agg_cols = ['size','count',pd.Series.nunique]
+        results = []
         for left,right in crossval:
             tmp_df = df[(df[left_col]==left)&(df[right_col]==right)]
             fea = tmp_df.groupby(key)[col].agg(agg_cols).reset_index()
-            fea.rename(columns={'size':left_col+str(left)+'_'+right_col+str(right)+'_'+col+'_size'+renamedays,\
-                                'count':left_col+str(left)+'_'+right_col+str(right)+'_'+col+'_count'+renamedays,\
-                                'nunique':left_col+str(left)+'_'+right_col+str(right)+'_'+col+'_nunique'+renamedays},inplace=True)
-            self.sample = pd.merge(self.sample,fea,how='left',on=key)
+            fea.rename(columns={'size':left_col+'_'+str(left)+'_'+right_col+'_'+str(right)+'_'+col+'_size'+renamedays,\
+                                'count':left_col+'_'+str(left)+'_'+right_col+'_'+str(right)+'_'+col+'_count'+renamedays,\
+                                'nunique':left_col+'_'+str(left)+'_'+right_col+'_'+str(right)+'_'+col+'_nunique'+renamedays},inplace=True)
+            results.append(fea)
+        return results
+#             self.sample = pd.merge(self.sample,fea,how='left',on=key)
             
     def continuousAggregate(self,df,key,col,renamedays,smaller=True):
         if smaller==True:
@@ -411,6 +519,63 @@ class AggregateCharacteristics:
         fea = df.groupby(key)[col].agg(agg_cols).reset_index()
         fea.rename(columns={'size':col+'_size'+renamedays,'count':col+'_count'+renamedays,'nunique':col+'_nunique'+renamedays},inplace=True)
         return fea
+    
+    #最近一次
+    def lasttimeDerived(self,df,key,timecol='',timediffcol=''):
+        df_max = df.groupby(key)[timecol].max().reset_index()
+        df_max = pd.merge(df_max,df)
+        need_cols = [timediffcol]
+        need_cols.extend(self.continuouscols)
+        need_cols.extend(self.discretecols)
+        rename_dict = {x:'lasttime_'+x for x in need_cols}
+        need_cols.append(key)
+        fea = df_max[need_cols].rename(columns=rename_dict)
+        self.sample = pd.merge(self.sample,fea,how='left',on=key)
+    
+    #最早一次
+    def firsttimeDerived(self,df,key,timecol='',timediffcol=''):
+        df_min = df.groupby(key)[timecol].min().reset_index()
+        df_min = pd.merge(df_min,df)
+        need_cols = [timediffcol]
+        need_cols.extend(self.continuouscols)
+        need_cols.extend(self.discretecols)
+        rename_dict = {x:'firsttime_'+x for x in need_cols}
+        need_cols.append(key)
+        fea = df_min[need_cols].rename(columns=rename_dict)
+        self.sample = pd.merge(self.sample,fea,how='left',on=key)
+    
+    #最近xx天比近xx天
+    def trendDerived(self,cutline=2):
+        import re
+        pattern = re.compile(r'.+(?=last\d+days)')
+        tmp = list(self.sample.columns)
+        cols_need = list(set([pattern.search(x).group() for x in tmp if pattern.search(x)]))
+        days_list = self.dayslist[1:]
+        numerator = days_list[:cutline]
+        denominator = days_list[cutline:]
+        trenddays = [(x,y) for x in numerator for y in denominator]
+        for col in cols_need:
+            for days1,days2 in trenddays:
+                numerator_col = col +'last'+days1+'days'
+                denominator_col = col +'last'+days2+'days'
+                self.sample[col+'last'+days1+'_div_'+days2+'days'] = self.sample.apply(lambda x:100.0*x[numerator_col]/x[denominator_col] if x[denominator_col]!=0 else -9999976,axis=1)
+                self.sample[col+'last'+days2+'_sub_'+days1+'days'] = self.sample.apply(lambda x:x[denominator_col]-x[numerator_col],axis=1)
+        
+    
+    #个体与整体差异
+    def getIndividual_global_differences(self):
+        pass
+    
+    #数据尺度转换
+    def transform_log(self):
+        pass
+    
+    def consistencyCheck(self,df,key,leftcol,rightcol):
+        renamecol = leftcol+'_'+rightcol+'_isConsistency'
+        df[renamecol] = df.apply(lambda x: 1 if str(x[leftcol])==str(x[rightcol]) else 0,axis=1)
+        fea = df.groupby(key)[renamecol].min().reset_index()
+        return fea
+     
     
 
 from category_encoders import *
