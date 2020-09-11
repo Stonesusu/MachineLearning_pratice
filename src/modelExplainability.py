@@ -48,6 +48,7 @@ def get_permutation_feature_imp(is_test=False,imp_threshold=0,how_param = 'outer
     return perm_feature_select
 
 import shap
+import multiprocessing
 class ShapTreeExplainer:
     def __init__(self,model,df):
         self.df = df
@@ -55,19 +56,47 @@ class ShapTreeExplainer:
         self.explainer = shap.TreeExplainer(self.model,self.df)
         shap.initjs()  # notebook环境下，加载用于可视化的JS代码
         
-    def shap_force_plot(self,index):
+    def shap_force_plot(self,index,approximate=False):
         data_test = self.df.iloc[index].astype('float')
-        shap_values = self.explainer.shap_values(data_test)
+        shap_values = self.explainer.shap_values(data_test,approximate=approximate)
         shap.force_plot(self.explainer.expected_value[1], shap_values[1], data_test)
-        print("Done!")
+    
         
-    def shap_summary_plot(self,rows):
+    def shap_summary_plot(self,rows,approximate=False,max_display=50):
         # calculate shap values. This is what we will plot.
         # Calculate shap_values for all of val_X rather than a single row, to have more data for plot.
-        self.shap_values = self.explainer.shap_values(self.df[:rows])
-
+        shap_values = self.explainer.shap_values(self.df[:rows],approximate=approximate)
         # Make plot. Index of [1] is explained in text below.
-        shap.summary_plot(shap_values[1], self.df[:rows])
+        shap.summary_plot(shap_values[1], self.df[:rows],max_display=max_display)
+        
+    def shap_summary_plot_multiProcess(self,rows,approximate=False,processes=10,max_display=50):
+        # calculate shap values with multi-process mode
+        pool = multiprocessing.Pool(processes=processes)
+        executeResults={}
+        for idx in range(rows):
+            data_test = self.df.iloc[idx].astype('float')
+            executeResults[idx]=pool.apply_async(func=self.explainer.shap_values,args=(data_test,approximate))
+        pool.close()
+        pool.join()
+        shap_values = []
+        shap_value0 = []
+        shap_value1 = []
+        list1= sorted(executeResults.items(),key=lambda x:x[0])
+        for k,value in list1:
+            fea=value.get()
+            shap_value0.append(fea[0])
+            shap_value1.append(fea[1])
+        shap_value0 = np.array(shap_value0)
+        shap_value1 = np.array(shap_value1)
+        shap_values.append(shap_value0)
+        shap_values.append(shap_value1)
+#         return shap_values
+        # Make plot. Index of [1] is explained in text below.
+        shap.summary_plot(shap_values[1], self.df[:rows],max_display=max_display)
+        
+        
+       
+        
         
     """还有更多功能：
     鼠标可以放图上面显示具体数值

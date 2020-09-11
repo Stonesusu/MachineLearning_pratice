@@ -54,11 +54,10 @@ def fea_kde_plot(train,test,fea_cols,target,target_list,figsize=(15,5)):
     for col in fea_cols:
         plot_kde(train, test, col,target=target,target_list=target_list,values=True)
         
-def bar_plot(df,col,figsize=(1, 2)):
-    
+
         
 #单维直方图，附加kde
-def fea_dist_plot(df,col,figsize=(1, 2)):
+def dist_plot(df,col,figsize=(8, 7)):
     sns.set_style("white")
     sns.set_color_codes(palette='deep')
     f, ax = plt.subplots(figsize=figsize)
@@ -72,8 +71,29 @@ def fea_dist_plot(df,col,figsize=(1, 2)):
     plt.show()
     
 #盒图
-def box_plot(df,x,y,hue=None,figsize=(16,5),rotation=45):
+def box_plot_1d(df,x,figsize=(16,5),orient='h'):
+    sns.set_style("white")
     f, ax = plt.subplots(figsize=figsize)
-    fig = sns.boxplot(x=x, y=y,hue=hue,data=df)
+    ax.set_xscale("log")  ##数据量纲太大，log解决
+    plt.xlabel(x)
+    plt.ylabel("value")
+    sns.boxplot(data=all_features[x] , orient=orient, palette="Set1")
+    ax.xaxis.grid(False)
+    ax.set(ylabel="Feature names")
+    ax.set(xlabel="values")
+    ax.set(title="Distribution of Features")
+    sns.despine(trim=True, left=True)
+    
+def box_plot_multi_dim(df,x,y,hue=None,figsize=(16,5),rotation=45,orient=None):
+    f, ax = plt.subplots(figsize=figsize)
+    fig = sns.boxplot(x=x, y=y,hue=hue,orient=orient,data=df)
 #     fig.axis(ymin=0, ymax=800000);
-    plt.xticks(rotation=rotation);
+    plt.xticks(rotation=rotation)
+    
+def scatter_plot(df,x,y,alpha=0.3, ylim=(0,800000)):
+    df.plot.scatter(x=x, y=y, alpha=alpha, ylim=ylim);
+
+def heatmap_plot(df,vmax=1.0,figsize=(15,12),cmap='Blues',square=True):
+    corr = df.corr()
+    plt.subplots(figsize=figsize)
+    sns.heatmap(corr, vmax=vmax, cmap=cmap, square=square)

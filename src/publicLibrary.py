@@ -11,3 +11,5 @@ import sys
 
 #__all__可以控制我们哪些变量可见
 # __all__ = ['wn','np','pd','os','plt','sns','sys']
+
+print('you have imported publicLibrary')

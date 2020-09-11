@@ -523,7 +523,8 @@ class AggregateCharacteristics:
     #最近一次
     def lasttimeDerived(self,df,key,timecol='',timediffcol=''):
         df_max = df.groupby(key)[timecol].max().reset_index()
-        df_max = pd.merge(df_max,df)
+        df_max = pd.merge(df_max,df,how='inner',on=[key,timecol])
+        df_max.drop_duplicates([key,timecol],inplace=True)
         need_cols = [timediffcol]
         need_cols.extend(self.continuouscols)
         need_cols.extend(self.discretecols)
@@ -535,7 +536,8 @@ class AggregateCharacteristics:
     #最早一次
     def firsttimeDerived(self,df,key,timecol='',timediffcol=''):
         df_min = df.groupby(key)[timecol].min().reset_index()
-        df_min = pd.merge(df_min,df)
+        df_min = pd.merge(df_min,df,how='inner',on=[key,timecol])
+        df_min.drop_duplicates([key,timecol],inplace=True)
         need_cols = [timediffcol]
         need_cols.extend(self.continuouscols)
         need_cols.extend(self.discretecols)
@@ -648,7 +650,8 @@ class CustomFeatureSelector:
     
     def randomForestSelectFeas(self,X,y,is_fit=True):
         from sklearn.ensemble import RandomForestClassifier
-        from sklearn.externals import joblib
+#         from sklearn.externals import joblib
+        import joblib
         if is_fit:
             randomforest_model = RandomForestClassifier(n_estimators=200,class_weight='balanced',random_state=2019).fit(X,y)
             joblib.dump(randomforest_model,'./data/randomforest_model.pkl')
