@@ -75,7 +75,7 @@ class ShapTreeExplainer:
         executeResults={}
         for idx in range(rows):
             data_test = self.df.iloc[idx].astype('float')
-            executeResults[idx]=pool.apply_async(func=self.explainer.shap_values,args=(data_test,approximate))
+            executeResults[idx]=pool.apply_async(func=self.explainer.shap_values,args=(data_test,None,None,approximate))
         pool.close()
         pool.join()
         shap_values = []
