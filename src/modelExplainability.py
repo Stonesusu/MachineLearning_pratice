@@ -50,10 +50,13 @@ def get_permutation_feature_imp(is_test=False,imp_threshold=0,how_param = 'outer
 import shap
 import multiprocessing
 class ShapTreeExplainer:
-    def __init__(self,model,df):
+    def __init__(self,model,df,feature_perturbation='interventional',sample_frac=None):
         self.df = df
+        if sample_frac is not None:
+            self.df = self.df.sample(frac=sample_frac,random_state=2020)
+        self.df = self.df.reset_index(drop=True)
         self.model = model
-        self.explainer = shap.TreeExplainer(self.model,self.df)
+        self.explainer = shap.TreeExplainer(self.model,self.df,feature_perturbation=feature_perturbation)
         shap.initjs()  # notebook环境下，加载用于可视化的JS代码
         
     def shap_force_plot(self,index,approximate=False):
@@ -61,43 +64,49 @@ class ShapTreeExplainer:
         shap_values = self.explainer.shap_values(data_test,approximate=approximate)
         shap.force_plot(self.explainer.expected_value[1], shap_values[1], data_test)
     
-        
-    def shap_summary_plot(self,rows,approximate=False,max_display=50):
+    def get_data_shapvalues(self,approximate=False,processes=None):
+        if processes is None:
+            self.shap_values = self.explainer.shap_values(self.df,approximate=approximate)
+        else:
+            # calculate shap values with multi-process mode
+            pool = multiprocessing.Pool(processes=processes)
+            executeResults={}
+            for idx in range(self.df.shape[0]):
+                data_test = self.df.iloc[idx].astype('float')
+                executeResults[idx]=pool.apply_async(func=self.explainer.shap_values,args=(data_test,None,None,approximate))
+            pool.close()
+            pool.join()
+            shap_values = []
+            shap_value0 = []
+            shap_value1 = []
+            list1= sorted(executeResults.items(),key=lambda x:x[0])
+            for k,value in list1:
+                fea=value.get()
+                shap_value0.append(fea[0])
+                shap_value1.append(fea[1])
+            shap_value0 = np.array(shap_value0)
+            shap_value1 = np.array(shap_value1)
+            shap_values.append(shap_value0)
+            shap_values.append(shap_value1)
+            self.shap_values = shap_values
+    
+    def shap_summary_plot(self,rows,max_display=50):
         # calculate shap values. This is what we will plot.
         # Calculate shap_values for all of val_X rather than a single row, to have more data for plot.
-        shap_values = self.explainer.shap_values(self.df[:rows],approximate=approximate)
+        # shap_values = self.explainer.shap_values(self.df[:rows],approximate=approximate)
         # Make plot. Index of [1] is explained in text below.
-        shap.summary_plot(shap_values[1], self.df[:rows],max_display=max_display)
-        
-    def shap_summary_plot_multiProcess(self,rows,approximate=False,processes=10,max_display=50):
-        # calculate shap values with multi-process mode
-        pool = multiprocessing.Pool(processes=processes)
-        executeResults={}
-        for idx in range(rows):
-            data_test = self.df.iloc[idx].astype('float')
-            executeResults[idx]=pool.apply_async(func=self.explainer.shap_values,args=(data_test,None,None,approximate))
-        pool.close()
-        pool.join()
-        shap_values = []
-        shap_value0 = []
-        shap_value1 = []
-        list1= sorted(executeResults.items(),key=lambda x:x[0])
-        for k,value in list1:
-            fea=value.get()
-            shap_value0.append(fea[0])
-            shap_value1.append(fea[1])
-        shap_value0 = np.array(shap_value0)
-        shap_value1 = np.array(shap_value1)
-        shap_values.append(shap_value0)
-        shap_values.append(shap_value1)
-#         return shap_values
-        # Make plot. Index of [1] is explained in text below.
-        shap.summary_plot(shap_values[1], self.df[:rows],max_display=max_display)
-        
-        
-       
-        
-        
+        shap.summary_plot(self.shap_values[1][:rows], self.df[:rows],max_display=max_display)
+    
+    def shap_dependence_plot(self,ind='',interaction_index='auto'):
+        # dependence_plot
+        # 为了理解单个feature如何影响模型的输出，我们可以将该feature的SHAP值与数据集中所有样本的feature值进行比较。
+        # 由于SHAP值表示一个feature对模型输出中的变动量的贡献，下面的图表示随着特征RM变化的预测房价(output)的变化。
+        # 单一RM(特征)值垂直方向上的色散表示与其他特征的相互作用，为了帮助揭示这些交互作用，“dependence_plot函数”
+        # 自动选择另一个用于着色的feature。在这个案例中，RAD特征着色强调了RM(每栋房屋的平均房间数)对RAD值较高地区的房价影响较小。
+        # create a SHAP dependence plot to show the effect of a single feature across the whole dataset
+        # interaction_index :“auto”, None, int, or string
+        shap.dependence_plot(ind=ind, shap_values=self.shap_values[1], features=self.df,interaction_index=interaction_index)
+
     """还有更多功能：
     鼠标可以放图上面显示具体数值
     shap.force_plot(explainer.expected_value[1], shap_values[1], val_X[:10000])
@@ -113,12 +122,5 @@ class ShapTreeExplainer:
     shap_interaction_values = explainer.shap_interaction_values(X)
     shap.summary_plot(shap_interaction_values, X)
     
-    # dependence_plot
-    # 为了理解单个feature如何影响模型的输出，我们可以将该feature的SHAP值与数据集中所有样本的feature值进行比较。
-    # 由于SHAP值表示一个feature对模型输出中的变动量的贡献，下面的图表示随着特征RM变化的预测房价(output)的变化。
-    # 单一RM(特征)值垂直方向上的色散表示与其他特征的相互作用，为了帮助揭示这些交互作用，“dependence_plot函数”
-    # 自动选择另一个用于着色的feature。在这个案例中，RAD特征着色强调了RM(每栋房屋的平均房间数)对RAD值较高地区的房价影响较小。
-    # create a SHAP dependence plot to show the effect of a single feature across the whole dataset
-    # interaction_index :“auto”, None, int, or string
-    shap.dependence_plot(ind="RM", shap_values=shap_values, features=X,interaction_index='RAD')
+    
     """
