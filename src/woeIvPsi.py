@@ -485,8 +485,8 @@ class CsiToolsWithMultiProgress:
                 resul_data=resul_data[resul_data[column]==resul_data[column]].reset_index(drop=True)
             resul_data[column]=resul_data[column].astype(str)
         return resul_data
-    def calculationPsi(self,data,column,processMissing,negativeMissing,train_sum,valid_sum):
-        resul_data=self.dataProcess(data,column,processMissing,negativeMissing)
+    def calculationPsi(self,data,column,bin_num,processMissing,negativeMissing,train_sum,valid_sum):
+        resul_data=self.dataProcess(data,column,bin_num,processMissing,negativeMissing)
         temp=resul_data.groupby(column)['mdl','vld'].sum().reset_index()
         temp['mdl_pct']=temp['mdl'].apply(lambda x: x/train_sum)
         temp['vld_pct']=temp['vld'].apply(lambda x: x/valid_sum)

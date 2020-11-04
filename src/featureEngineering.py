@@ -2,6 +2,7 @@ print("you have imported featureEngineering")
 
 from .publicLibrary import *
 import multiprocessing
+import re
 
 #变量相关性分析
 def fea_corr_analysis(df,target,exclusion_cols,corr_threshold):
@@ -546,8 +547,16 @@ class AggregateCharacteristics:
         fea = df_min[need_cols].rename(columns=rename_dict)
         self.sample = pd.merge(self.sample,fea,how='left',on=key)
     
+    
+    def calculate_trend(self,df,key,col,days1,days2):
+        numerator_col = col +'last'+days1+'days'
+        denominator_col = col +'last'+days2+'days'
+        df[col+'last'+days1+'_div_'+days2+'days'] = df.apply(lambda x:100.0*x[numerator_col]/x[denominator_col] if x[denominator_col]!=0 else -9999976,axis=1)
+        df[col+'last'+days2+'_sub_'+days1+'days'] = df.apply(lambda x:x[denominator_col]-x[numerator_col],axis=1)
+        return df[[key,col+'last'+days1+'_div_'+days2+'days',col+'last'+days2+'_sub_'+days1+'days']]
+    
     #最近xx天比近xx天
-    def trendDerived(self,cutline=2):
+    def trendDerived(self,key,cutline=2):
         import re
         pattern = re.compile(r'.+(?=last\d+days)')
         tmp = list(self.sample.columns)
@@ -556,12 +565,19 @@ class AggregateCharacteristics:
         numerator = days_list[:cutline]
         denominator = days_list[cutline:]
         trenddays = [(x,y) for x in numerator for y in denominator]
+#         return cols_need,trenddays
+        pool = multiprocessing.Pool(processes=self.processes)
+        executeResults={}
+        df_tmp = self.sample.copy()
         for col in cols_need:
             for days1,days2 in trenddays:
-                numerator_col = col +'last'+days1+'days'
-                denominator_col = col +'last'+days2+'days'
-                self.sample[col+'last'+days1+'_div_'+days2+'days'] = self.sample.apply(lambda x:100.0*x[numerator_col]/x[denominator_col] if x[denominator_col]!=0 else -9999976,axis=1)
-                self.sample[col+'last'+days2+'_sub_'+days1+'days'] = self.sample.apply(lambda x:x[denominator_col]-x[numerator_col],axis=1)
+                k = col+days1+days2
+                executeResults[k]=pool.apply_async(func=self.calculate_trend,args=(df_tmp,key,col,days1,days2))
+        pool.close()
+        pool.join()
+        for k,value in executeResults.items():
+            fea=value.get()
+            self.sample = pd.merge(self.sample,fea,how='left',on=key)
         
     
     #个体与整体差异
@@ -572,11 +588,15 @@ class AggregateCharacteristics:
     def transform_log(self):
         pass
     
-    def consistencyCheck(self,df,key,leftcol,rightcol):
-        renamecol = leftcol+'_'+rightcol+'_isConsistency'
-        df[renamecol] = df.apply(lambda x: 1 if str(x[leftcol])==str(x[rightcol]) else 0,axis=1)
-        fea = df.groupby(key)[renamecol].min().reset_index()
-        return fea
+    def consistencyCheck(self):
+        need_cols = self.continuouscols.copy()
+        need_cols.extend(self.discretecols)
+        for col in need_cols:
+            leftcol = 'firsttime_'+ col
+            rightcol = 'lasttime_'+ col
+            renamecol = 'firsttime_'+'lasttime_'+col+'_isConsistency'
+            self.sample[renamecol] = self.sample.apply(lambda x: 1 if str(x[leftcol])==str(x[rightcol]) else 0,axis=1)
+#             return fea
      
     
 
@@ -653,7 +673,7 @@ class CustomFeatureSelector:
 #         from sklearn.externals import joblib
         import joblib
         if is_fit:
-            randomforest_model = RandomForestClassifier(n_estimators=200,class_weight='balanced',random_state=2019).fit(X,y)
+            randomforest_model = RandomForestClassifier(n_estimators=500,class_weight='balanced',random_state=2019).fit(X,y)
             joblib.dump(randomforest_model,'./data/randomforest_model.pkl')
             randomforest_feat_importances = pd.Series(randomforest_model.feature_importances_, index= X.columns)
             randomforest_feat_importances = pd.DataFrame(randomforest_feat_importances).reset_index()

@@ -55,7 +55,16 @@ def fea_kde_plot(train,test,fea_cols,target,target_list,figsize=(15,5)):
         plot_kde(train, test, col,target=target,target_list=target_list,values=True)
         
 
-        
+
+
+    
+#柱状图
+def bar_plot(df,x,y,hue=None,figsize=(16,5),rotation=0,order=None,orient=None):
+    f, ax = plt.subplots(figsize=figsize)
+    sns.barplot(x=x,y=y,data=df,hue=hue,order=order,orient=orient)
+    plt.xticks(rotation=rotation)
+    
+
 #单维直方图，附加kde
 def dist_plot(df,col,figsize=(8, 7)):
     sns.set_style("white")
@@ -77,14 +86,14 @@ def box_plot_1d(df,x,figsize=(16,5),orient='h'):
     ax.set_xscale("log")  ##数据量纲太大，log解决
     plt.xlabel(x)
     plt.ylabel("value")
-    sns.boxplot(data=all_features[x] , orient=orient, palette="Set1")
+    sns.boxplot(data=df[x] , orient=orient, palette="Set1")
     ax.xaxis.grid(False)
     ax.set(ylabel="Feature names")
     ax.set(xlabel="values")
     ax.set(title="Distribution of Features")
     sns.despine(trim=True, left=True)
     
-def box_plot_multi_dim(df,x,y,hue=None,figsize=(16,5),rotation=45,orient=None):
+def box_plot_multi_dim(df,x,y=None,hue=None,figsize=(16,5),rotation=45,orient=None):
     f, ax = plt.subplots(figsize=figsize)
     fig = sns.boxplot(x=x, y=y,hue=hue,orient=orient,data=df)
 #     fig.axis(ymin=0, ymax=800000);

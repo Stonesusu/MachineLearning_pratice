@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 # import missingno
 import sys
+import json
+
+# 将全局的字体设置为黑体
+import matplotlib
+matplotlib.rcParams['font.family'] = 'SimHei'
 
 #__all__可以控制我们哪些变量可见
 # __all__ = ['wn','np','pd','os','plt','sns','sys']
