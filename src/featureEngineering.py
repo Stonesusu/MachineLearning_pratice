@@ -304,8 +304,9 @@ class TimeFeatures:
     """
     def tagging_time_fea(self,df,nowtime=None,starttime=None,hour_interval=[8,10],hour_bins=[0,6,12,18,24]):
         if nowtime is not None:
-            df[nowtime+'_'+starttime+'_timediff'] = df[nowtime]-df[starttime]
-            df[nowtime+'_'+starttime+'_days'] = df[nowtime+'_'+starttime+'_timediff'].dt.days
+            df[nowtime+'_'+starttime+'_days'] = df.apply(lambda x: (x[nowtime].date()-x[starttime].date()).days if starttime==starttime else np.nan,axis=1)
+            #df[nowtime+'_'+starttime+'_timediff'] = df[nowtime]-df[starttime]
+            #df[nowtime+'_'+starttime+'_days'] = df[nowtime+'_'+starttime+'_timediff'].dt.days
         df[starttime+'_year'] = df[starttime].dt.year
         df[starttime+'_quarter'] = df[starttime].dt.quarter
         df[starttime+'_month'] = df[starttime].dt.month
@@ -419,7 +420,7 @@ class AggregateCharacteristics:
             fea=value.get()
             self.sample = pd.merge(self.sample,fea,how='left',on=key)
             
-        #一维交叉特征
+        #一维交叉特征--离散
         pool = multiprocessing.Pool(processes=self.processes)
         executeResults={}
         for discretecol in self.discretecols:
@@ -432,6 +433,13 @@ class AggregateCharacteristics:
             results=value.get()
             for fea in results:
                 self.sample = pd.merge(self.sample,fea,how='left',on=key)
+        #占比：一维交叉/总
+        for discretecol in self.discretecols:
+            for combinecol in self.combinecols:
+                values = self.df_tmp[combinecol].unique()
+                for ele in values:
+                    self.sample[combinecol+'_'+str(ele)+'_'+discretecol+'_nunique_pct'+renamedays] = self.sample.apply(lambda x: 100.0*x[combinecol+'_'+str(ele)+'_'+discretecol+'_nunique'+renamedays]/x[discretecol+'_nunique'+renamedays] if x[discretecol+'_nunique'+renamedays]!=0 else -9999976,axis=1)
+                    
         
         #笛卡尔乘积交叉特征--离散
         pool = multiprocessing.Pool(processes=self.processes)
@@ -450,8 +458,9 @@ class AggregateCharacteristics:
         for continuouscol in self.continuouscols:
             for crosscol in self.continuous_crosscols:
                 pass
+                
     
-    #1d衍生-离散
+    #1d交叉衍生-离散
     def combine1d_discrete(self,df,key,combinecol,col,renamedays):
         agg_cols = ['size','count',pd.Series.nunique]
         values = df[combinecol].unique()
@@ -462,19 +471,20 @@ class AggregateCharacteristics:
             fea.rename(columns={'size':combinecol+'_'+str(ele)+'_'+col+'_size'+renamedays,\
                                 'count':combinecol+'_'+str(ele)+'_'+col+'_count'+renamedays,\
                                 'nunique':combinecol+'_'+str(ele)+'_'+col+'_nunique'+renamedays},inplace=True)
+            
             results.append(fea)
         return results
 #             self.sample = pd.merge(self.sample,fea,how='left',on=key)
     
-    #1d衍生-连续
+    #1d交叉衍生-连续
     def combine1d_continuous(self,df,key,combinecol,col,renamedays):
         pass
     
-    #2d衍生-连续
+    #2d交叉衍生-连续
     def cartesianProduct_continuous(self,df,key,crosscol,col,renamedays):
         pass
     
-    #2d衍生-离散
+    #2d交叉衍生-离散
     def cartesianProduct_discrete(self,df,key,crosscol,col,renamedays):
         left_col,right_col = crosscol[0],crosscol[1]
         left_values = df[left_col].unique()
@@ -555,7 +565,7 @@ class AggregateCharacteristics:
         df[col+'last'+days2+'_sub_'+days1+'days'] = df.apply(lambda x:x[denominator_col]-x[numerator_col],axis=1)
         return df[[key,col+'last'+days1+'_div_'+days2+'days',col+'last'+days2+'_sub_'+days1+'days']]
     
-    #最近xx天比近xx天
+    #趋势类：最近xx天比近xx天
     def trendDerived(self,key,cutline=2):
         import re
         pattern = re.compile(r'.+(?=last\d+days)')
