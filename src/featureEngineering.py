@@ -307,42 +307,42 @@ class TimeFeatures:
             df[nowtime+'_'+starttime+'_days'] = df.apply(lambda x: (x[nowtime].date()-x[starttime].date()).days if starttime==starttime else np.nan,axis=1)
             #df[nowtime+'_'+starttime+'_timediff'] = df[nowtime]-df[starttime]
             #df[nowtime+'_'+starttime+'_days'] = df[nowtime+'_'+starttime+'_timediff'].dt.days
-        df[starttime+'_year'] = df[starttime].dt.year
-        df[starttime+'_quarter'] = df[starttime].dt.quarter
-        df[starttime+'_month'] = df[starttime].dt.month
-        df[starttime+'_day'] = df[starttime].dt.day
-        df[starttime+'_dayofweek'] = df[starttime].dt.dayofweek
-        df[starttime+'_weekofyear'] = df[starttime].dt.week
-        df[starttime+'_weekend'] = df[starttime+'_dayofweek'].apply(lambda x: 1 if x>=5 else 0)
-        df[starttime+'_hour'] = df[starttime].dt.hour
+        df['year'] = df[starttime].dt.year
+        df['quarter'] = df[starttime].dt.quarter
+        df['month'] = df[starttime].dt.month
+        df['day'] = df[starttime].dt.day
+        df['dayofweek'] = df[starttime].dt.dayofweek
+        df['weekofyear'] = df[starttime].dt.week
+        df['weekend'] = df['dayofweek'].apply(lambda x: 1 if x>=5 else 0)
+        df['hour'] = df[starttime].dt.hour
 
         # pandas.Series.dt 下有很多属性，可以去看一下是否有需要的。
-        df[starttime+'_is_year_start'] = df[starttime].dt.is_year_start
-        df[starttime+'_is_year_end'] = df[starttime].dt.is_year_end
-        df[starttime+'_is_quarter_start'] = df[starttime].dt.is_quarter_start
-        df[starttime+'_is_quarter_end'] = df[starttime].dt.is_quarter_end
-        df[starttime+'_is_month_start'] = df[starttime].dt.is_month_start
-        df[starttime+'_is_month_end'] = df[starttime].dt.is_month_end
+        df['is_year_start'] = df[starttime].dt.is_year_start
+        df['is_year_end'] = df[starttime].dt.is_year_end
+        df['is_quarter_start'] = df[starttime].dt.is_quarter_start
+        df['is_quarter_end'] = df[starttime].dt.is_quarter_end
+        df['is_month_start'] = df[starttime].dt.is_month_start
+        df['is_month_end'] = df[starttime].dt.is_month_end
 
         # 是否时一天的高峰时段 8~10
-        df[starttime+'_is_day_high'] = df[starttime+'_hour'].apply(lambda x: 1 if hour_interval[0] <= x <= hour_interval[1]  else 0)
+        df['is_day_high'] = df['hour'].apply(lambda x: 1 if hour_interval[0] <= x <= hour_interval[1]  else 0)
         # 对小时进行分箱
-        df[starttime+'_hour_box'] = pd.cut(df[starttime+'_hour'],bins=hour_bins,right=False)
-        df[starttime+'_hour_box'] = df[starttime+'_hour_box'].astype(str).apply(lambda x: re.sub(r'[\[,)]+', "", x).replace(' ','_'))
+        df['hour_box'] = pd.cut(df['hour'],bins=hour_bins,right=False)
+        df['hour_box'] = df['hour_box'].astype(str).apply(lambda x: re.sub(r'[\[,)]+', "", x).replace(' ','_'))
         
         #上旬
-        df['first_ten_days'] = df[starttime+'_day'].apply(lambda x : 1 if x<=10 else 0)
+        df['first_ten_days'] = df['day'].apply(lambda x : 1 if x<=10 else 0)
         #中旬
-        df['mid_ten_days'] = df[starttime+'_day'].apply(lambda x : 1 if 10<x<=20 else 0)
+        df['mid_ten_days'] = df['day'].apply(lambda x : 1 if 10<x<=20 else 0)
         #下旬
-        df['last_ten_days'] = df[starttime+'_day'].apply(lambda x : 1 if 20<x<=31 else 0)
+        df['last_ten_days'] = df['day'].apply(lambda x : 1 if 20<x<=31 else 0)
 
-        df = link_head_tail(df, starttime+'_hour', n=24)
-        df = link_head_tail(df, starttime+'_day', n=31)
-        df = link_head_tail(df, starttime+'_dayofweek', n=7)
-        df = link_head_tail(df, starttime+'_quarter', n=4)
-        df = link_head_tail(df, starttime+'_month', n=12)
-        df = link_head_tail(df, starttime+'_weekofyear', n=53)
+        df = link_head_tail(df, 'hour', n=24)
+        df = link_head_tail(df, 'day', n=31)
+        df = link_head_tail(df, 'dayofweek', n=7)
+        df = link_head_tail(df, 'quarter', n=4)
+        df = link_head_tail(df, 'month', n=12)
+        df = link_head_tail(df, 'weekofyear', n=53)
 
         #节假日、节假日第 n 天、节假日前 n 天、节假日后 n 天
         
@@ -386,18 +386,18 @@ class AggregateCharacteristics:
         self.processes = processes
         
     #最近xx天内
-    def Aggregate_all_days(self,df,key,timediffcol=''):
+    def Aggregate_all_days(self,df,key,timecol,timediffcol=''):
         for ndays in self.dayslist:
-            self.Aggregate_days(df,key,timediffcol,ndays)
+            self.Aggregate_days(df,key,timecol,timediffcol,ndays)
         
-    def Aggregate_days(self,df,key,timediffcol='',ndays='all',smaller=True):
+    def Aggregate_days(self,df,key,timecol,timediffcol='',ndays='all',smaller=True):
         #ndays is None:所有历史数据参与计算变量
         if ndays=='all':
             self.df_tmp = df
             renamedays = ''
         else:
             self.df_tmp = df[df[timediffcol]<=int(ndays)]
-            renamedays = '_last'+ndays+'days'
+            renamedays = '_'+timecol+'_last'+ndays+'days'
         
         #连续型变量聚合
         pool = multiprocessing.Pool(processes=self.processes)
@@ -617,7 +617,7 @@ class CategoryEncoders:
     '''
     def __init__(self,encoder=1):
         encoders_dict = { 1:BinaryEncoder,
-                    2:OneHotEncoder
+                          2:OneHotEncoder
                     }
         
         self.encoder = encoders_dict.get(encoder)
@@ -629,7 +629,7 @@ class CategoryEncoders:
         #enc = BinaryEncoder(cols=cat_cols).fit(X_train)
         #直接cat_cols=cat_cols超出内存，用for代替
         for col in cols:
-            enc = self.encoder(cols=col).fit(train_df)
+            enc = self.encoder(cols=col,handle_unknown='indicator',handle_missing='indicator',use_cat_names=True).fit(train_df)
             train_df = enc.transform(train_df)
             test_df = enc.transform(test_df)
         return train_df,test_df
