@@ -539,7 +539,7 @@ class AggregateCharacteristics:
         need_cols = [timediffcol]
         need_cols.extend(self.continuouscols)
         need_cols.extend(self.discretecols)
-        rename_dict = {x:'lasttime_'+x for x in need_cols}
+        rename_dict = {x:'lasttime_'+timecol+'_'+x for x in need_cols}
         need_cols.append(key)
         fea = df_max[need_cols].rename(columns=rename_dict)
         self.sample = pd.merge(self.sample,fea,how='left',on=key)
@@ -552,7 +552,7 @@ class AggregateCharacteristics:
         need_cols = [timediffcol]
         need_cols.extend(self.continuouscols)
         need_cols.extend(self.discretecols)
-        rename_dict = {x:'firsttime_'+x for x in need_cols}
+        rename_dict = {x:'firsttime_'+timecol+'_'+x for x in need_cols}
         need_cols.append(key)
         fea = df_min[need_cols].rename(columns=rename_dict)
         self.sample = pd.merge(self.sample,fea,how='left',on=key)
@@ -561,20 +561,27 @@ class AggregateCharacteristics:
     def calculate_trend(self,df,key,col,days1,days2):
         numerator_col = col +'last'+days1+'days'
         denominator_col = col +'last'+days2+'days'
-        df[col+'last'+days1+'_div_'+days2+'days'] = df.apply(lambda x:100.0*x[numerator_col]/x[denominator_col] if x[denominator_col]!=0 else -9999976,axis=1)
-        df[col+'last'+days2+'_sub_'+days1+'days'] = df.apply(lambda x:x[denominator_col]-x[numerator_col],axis=1)
+        if (numerator_col not in df.columns) or (denominator_col not in df.columns):
+            df[col+'last'+days1+'_div_'+days2+'days'] = np.nan
+            df[col+'last'+days2+'_sub_'+days1+'days'] = np.nan
+        else:
+            df[col+'last'+days1+'_div_'+days2+'days'] = df.apply(lambda x:100.0*x[numerator_col]/x[denominator_col] if x[denominator_col]!=0 else -9999976,axis=1)
+            df[col+'last'+days2+'_sub_'+days1+'days'] = df.apply(lambda x:x[denominator_col]-x[numerator_col],axis=1)
         return df[[key,col+'last'+days1+'_div_'+days2+'days',col+'last'+days2+'_sub_'+days1+'days']]
     
     #趋势类：最近xx天比近xx天
-    def trendDerived(self,key,cutline=2):
+    def trendDerived(self,key):
         import re
         pattern = re.compile(r'.+(?=last\d+days)')
         tmp = list(self.sample.columns)
         cols_need = list(set([pattern.search(x).group() for x in tmp if pattern.search(x)]))
         days_list = self.dayslist[1:]
-        numerator = days_list[:cutline]
-        denominator = days_list[cutline:]
-        trenddays = [(x,y) for x in numerator for y in denominator]
+        numerator = days_list
+        denominator = days_list
+        trenddays = [(x,y) for x in numerator for y in denominator if int(x)<int(y)]
+        
+#         import pdb
+#         pdb.set_trace()
 #         return cols_need,trenddays
         pool = multiprocessing.Pool(processes=self.processes)
         executeResults={}
