@@ -38,19 +38,23 @@ def fea_kde_plot(train,test,fea_cols,target,target_list,figsize=(15,5)):
         fig,ax =plt.subplots(1,4,figsize=figsize)
         if target_list is not None:
             colors = ['g','r','y','b']
-        for i,ele in enumerate(target_list):
-            sns.kdeplot(train[col][train[target]==ele],color=colors[i],ax=ax[0],label='label_'+str(ele))
+        try:
+            for i,ele in enumerate(target_list):
+                df = train[col][train[target]==ele]
+                sns.kdeplot(df,color=colors[i],ax=ax[0],label='label_'+str(ele))
 
-        sns.kdeplot(train[col],color='y',ax=ax[1],label='train')
+            sns.kdeplot(train[col],color='y',ax=ax[1],label='train')
 
-        sns.kdeplot(test[col],color='b',ax=ax[2],label='test')
+            sns.kdeplot(test[col],color='b',ax=ax[2],label='test')
 
-        sns.kdeplot(train[col],color='y',ax=ax[3],label='train')
-        sns.kdeplot(test[col],color='b',ax=ax[3],label='test')
-        plt.xlabel(col,size=16)
-        plt.show()
-        del train,col,test
-        gc.collect()
+            sns.kdeplot(train[col],color='y',ax=ax[3],label='train')
+            sns.kdeplot(test[col],color='b',ax=ax[3],label='test')
+            plt.xlabel(col,size=16)
+            plt.show()
+            del train,col,test
+            gc.collect()
+        except:
+            print('Cannot estiamte density')
     for col in fea_cols:
         plot_kde(train, test, col,target=target,target_list=target_list,values=True)
         
