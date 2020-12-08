@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 def getBins(data,column,bin_num):
     '''
     分箱函数
@@ -546,3 +547,111 @@ class CsiToolsWithMultiProgress:
         psi=pd.DataFrame(psi,columns=['feature','CSI'])
         psi.sort_values('CSI',ascending=False).reset_index(drop=True)
         return psi,psi_dict
+
+    
+def saveWoe(woe_dict,variables,header=None,processMiss=True,addVar=True):
+    woe_result=[]
+    for col in variables:
+        temp = woe_dict.get(col,np.nan)
+        if temp is not None:
+            value=temp.copy()
+            if addVar:
+                value['variable']=col
+            else:
+                header = True
+            if header is None:
+                value.to_csv('temp.csv',header=None,index=False)
+            else:
+                value.to_csv('temp.csv',index=False)
+            temp=pd.read_csv('temp.csv',header=None)
+            col_len=len(temp.columns)
+            empty=pd.DataFrame([[ np.nan for index in range(col_len)]],columns=list(range(col_len)))
+            woe_result.append(temp)
+            woe_result.append(empty)
+            woe_result.append(empty)
+        else:
+            print('error column %s'%(col))
+    woe_result=pd.concat(woe_result)
+    if processMiss:
+        woe_result=woe_result.replace('NAN','缺失')
+    if addVar:
+        woe_result.columns=['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV','variable_name']
+        woe_result=woe_result[['variable_name','variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']]
+    else:
+        woe_result.columns=['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']
+        woe_result=woe_result[['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']]
+    os.system('rm temp.csv')
+    return woe_result
+
+def saveTrainValidWoe(train_woes,valid_woes,variables,header=None,processMiss=True,addVar=True):
+    train_woe_result=[]
+    valid_woe_result=[]
+    for col in variables:
+        temp = train_woes.get(col,np.nan)
+        tmp = valid_woes.get(col,np.nan)
+        if temp is not None and tmp is not None:
+            value=temp.copy()
+            value1=tmp.copy()
+            if addVar:
+                value['variable']=col
+                value1['variable']=col
+            else:
+                header = True
+            if header is None:
+                value.to_csv('temp.csv',header=None,index=False)
+                value1.to_csv('temp1.csv',header=None,index=False)
+            else:
+                value.to_csv('temp.csv',index=False)
+                value1.to_csv('temp1.csv',index=False)
+            temp=pd.read_csv('temp.csv',header=None)
+            tmp=pd.read_csv('temp1.csv',header=None)
+            col_len=len(temp.columns)
+            empty=pd.DataFrame([[ np.nan for index in range(col_len)]],columns=list(range(col_len)))
+            train_woe_result.append(temp)
+            valid_woe_result.append(tmp)
+            shape=temp.shape[0]-tmp.shape[0]
+            if shape==0:
+                train_empty_num=2
+                valid_empty_num=2
+            elif shape>0:
+                train_empty_num=2
+                valid_empty_num=train_empty_num+shape
+            else:
+                valid_empty_num=2
+                train_empty_num=valid_empty_num-shape
+            for index in range(train_empty_num):
+                train_woe_result.append(empty)
+            for index in range(valid_empty_num):
+                valid_woe_result.append(empty)
+        else:
+            print('error column %s'%(col))
+    train_woe_result=pd.concat(train_woe_result)
+    valid_woe_result=pd.concat(valid_woe_result)
+    if processMiss:
+        train_woe_result=train_woe_result.replace('NAN','缺失')
+        valid_woe_result=valid_woe_result.replace('NAN','缺失')
+    if addVar:
+        train_woe_result.columns=['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV','variable_name']
+        train_woe_result=train_woe_result[['variable_name','variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']]
+        valid_woe_result.columns=['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV','variable_name']
+        valid_woe_result=valid_woe_result[['variable_name','variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']]
+    else:
+        train_woe_result.columns=['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']
+        train_woe_result=train_woe_result[['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']]
+        valid_woe_result.columns=['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']
+        valid_woe_result=valid_woe_result[['variable_cut','bad', 'good', 'badRate', 'Total', 'good_pct', 'bad_pct',
+           'Total_pct', 'Odds', 'WOE', 'IV']]
+    os.system('rm temp.csv')
+    os.system('rm temp1.csv')
+    return train_woe_result,valid_woe_result
