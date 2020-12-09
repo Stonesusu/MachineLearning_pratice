@@ -549,6 +549,44 @@ class CsiToolsWithMultiProgress:
         return psi,psi_dict
 
     
+def batch_WoeIvTools(train,valid=None,cols=None,batch_size=100,weight='weight',target='target',bin_num=10,good_event=1,
+                     consistent=True,processMissing=True,negativeMissing=True):
+    woeIvToolsWithMultiProgress = WoeIvToolsWithMultiProgress()
+    iv_df = pd.DataFrame()
+    psi_df = pd.DataFrame()
+    train_woes_df = dict()
+    valid_woes_df = dict()
+    psi_dict_df = dict()
+    batch_num = len(cols)//batch_size +1 if len(cols)%batch_size>0 else len(cols)//batch_size
+    print('batch_num:',batch_num)
+    for idx in range(batch_num):
+        print(idx)
+        tmp_cols = cols[idx*batch_size:(idx+1)*batch_size]
+        tmp_cols.extend(['target','weight'])
+        iv,train_woes,valid_woes = woeIvToolsWithMultiProgress.getTrainValidIV(train=train[tmp_cols],test=None,valid=valid[tmp_cols],
+                                                                               weight=weight,bin_num=bin_num,target=target,
+                                                                               good_event=good_event,consistent=consistent,
+                                                                               processMissing=processMissing,
+                                                                               negativeMissing=negativeMissing)
+        iv_df = pd.concat([iv_df,iv])
+        if train_woes_df is None:
+            train_woes_df = train_woes
+            valid_woes_df = valid_woes
+        else:
+            train_woes_df.update(train_woes)
+            valid_woes_df.update(valid_woes)
+            
+        csiToolsWithMultiProgress = CsiToolsWithMultiProgress()
+        psi,psi_dict = csiToolsWithMultiProgress.getPSI(train_data=train[tmp_cols],test_data=None,valid_data=valid[tmp_cols],
+                                                        bin_num=bin_num,weight=weight,invalid_ftr=[target],processMissing=True,negativeMissing=True)
+        psi_df = pd.concat([psi_df,psi])
+        if psi_dict_df is None:
+            psi_dict_df = psi_dict
+        else:
+            psi_dict_df.update(psi_dict)
+    return iv_df.sort_values('iv_train',ascending=False),train_woes_df,valid_woes_df,psi_df.sort_values('CSI',ascending=False),psi_dict_df
+
+    
 def saveWoe(woe_dict,variables,header=None,processMiss=True,addVar=True):
     woe_result=[]
     for col in variables:
